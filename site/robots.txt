@@ -1,3 +1,0 @@
-User-agent: *
-Allow: /
-Sitemap: https://www.pujaraandco.co.uk/sitemap.xml
