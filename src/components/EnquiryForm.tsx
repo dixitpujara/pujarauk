@@ -5,12 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { siteConfig } from '@/config/site';
 import { track } from '@/lib/analytics';
-import { enquirerTypes, enquirySchema, serviceOptions, type EnquiryInput } from '@/lib/enquiry-schema';
+import { enquirerTypes, enquirySchema, labelFor, serviceOptions, type EnquiryInput } from '@/lib/enquiry-schema';
 import { Icon } from './Icon';
-import { Button } from './ui/Button';
+import { Button, buttonClasses } from './ui/Button';
 
 type FieldErrors = Partial<Record<keyof EnquiryInput, string>>;
-type Status = 'idle' | 'submitting' | 'error' | 'rate_limited';
+type Status = 'idle' | 'submitting' | 'error' | 'rate_limited' | 'mailto';
 
 const DRAFT_KEY = 'pc_enquiry_draft';
 
@@ -112,7 +112,14 @@ export function EnquiryForm({ sensitiveDataNotice }: { sensitiveDataNotice: stri
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(parsed.data),
       });
-      const body = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; errors?: FieldErrors };
+      const body = (await res.json().catch(() => ({}))) as { ok?: boolean; code?: string; message?: string; errors?: FieldErrors };
+      if (res.status === 503 && body.code === 'EMAIL_NOT_CONFIGURED') {
+        // No mail service on the server: hand the enquiry to the visitor's own email app instead.
+        setStatus('mailto');
+        setServerMessage(body.message ?? 'Online sending is not switched on yet.');
+        requestAnimationFrame(() => errorSummaryRef.current?.focus());
+        return;
+      }
       if (res.status === 429) {
         setStatus('rate_limited');
         setServerMessage(body.message ?? 'Too many attempts. Please try again in a few minutes.');
@@ -142,6 +149,20 @@ export function EnquiryForm({ sensitiveDataNotice }: { sensitiveDataNotice: stri
   }
 
   const errorList = Object.entries(errors).filter(([, v]) => Boolean(v)) as [keyof EnquiryInput, string][];
+  const mailtoHref = (() => {
+    const subject = `Website enquiry: ${labelFor(serviceOptions, values.service)}`;
+    const lines = [
+      `Name: ${values.name}`,
+      `Email: ${values.email}`,
+      `Phone: ${values.phone || 'Not given'}`,
+      `I am: ${labelFor(enquirerTypes, values.enquirerType)}`,
+      `Service: ${labelFor(serviceOptions, values.service)}`,
+      `Marketing updates: ${values.marketingOptIn ? 'Yes' : 'No'}`,
+      '',
+      values.message,
+    ];
+    return `mailto:${siteConfig.contact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
+  })();
   const inputClass = (key: keyof EnquiryInput) =>
     `mt-1.5 block w-full rounded-md border bg-white px-3.5 py-2.5 text-base text-ink shadow-sm placeholder:text-ink-muted/70 focus:border-navy ${errors[key] ? 'border-error' : 'border-line'}`;
 
@@ -152,8 +173,25 @@ export function EnquiryForm({ sensitiveDataNotice }: { sensitiveDataNotice: stri
         tabIndex={-1}
         role="alert"
         aria-live="assertive"
-        className={`rounded-md border p-4 text-sm ${errorList.length || status === 'error' || status === 'rate_limited' ? 'border-error bg-error-bg text-error' : 'hidden'}`}
+        className={`rounded-md border p-4 text-sm ${status === 'mailto' ? 'border-line bg-info-bg text-ink' : errorList.length || status === 'error' || status === 'rate_limited' ? 'border-error bg-error-bg text-error' : 'hidden'}`}
       >
+        {status === 'mailto' ? (
+          <div>
+            <p className="font-semibold">{serverMessage} Send your enquiry from your own email app instead; everything you typed is filled in for you.</p>
+            <p className="mt-3">
+              <a href={mailtoHref} className={buttonClasses('primary', 'md')} onClick={() => track('enquiry_success', { via: 'mailto' })}>
+                Open in my email app
+              </a>
+            </p>
+            <p className="mt-3">
+              Or email{' '}
+              <a href={`mailto:${siteConfig.contact.email}`} className="underline">
+                {siteConfig.contact.email}
+              </a>{' '}
+              or call {siteConfig.contact.ukPhone.confirmed ? siteConfig.contact.ukPhone.display : siteConfig.contact.indiaPhones[0].display}.
+            </p>
+          </div>
+        ) : null}
         {status === 'error' || status === 'rate_limited' ? (
           <p className="font-semibold">
             {serverMessage} Your message is kept in this tab. You can also email us at{' '}

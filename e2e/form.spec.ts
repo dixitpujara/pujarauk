@@ -34,7 +34,9 @@ test.describe('Enquiry form', () => {
     await page.waitForTimeout(3200);
     await page.getByRole('button', { name: 'Send enquiry' }).click();
     const alert = page.locator('#enquiry [role="alert"]');
-    await expect(alert).toContainText(/temporarily unavailable|could not/);
+    await expect(alert).toContainText('not switched on yet');
+    const mailto = alert.getByRole('link', { name: 'Open in my email app' });
+    await expect(mailto).toHaveAttribute('href', /^mailto:hello@pujaraandco\.co\.uk\?subject=.*body=.*year-end/i);
     await expect(alert).toContainText('hello@pujaraandco.co.uk');
   });
 

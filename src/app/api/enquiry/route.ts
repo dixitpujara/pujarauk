@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     // Email not configured: log without personal data and tell the visitor to use another route.
     console.error('[enquiry] RESEND_API_KEY is not set; enquiry not delivered', { service: data.service, enquirerType: data.enquirerType });
     return NextResponse.json(
-      { ok: false, message: 'Our enquiry service is temporarily unavailable.' },
+      { ok: false, code: 'EMAIL_NOT_CONFIGURED', message: 'Online sending is not switched on yet.' },
       { status: 503 },
     );
   }
